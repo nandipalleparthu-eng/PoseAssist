@@ -1,0 +1,329 @@
+================================================================================
+  HUMAN POSE GUIDANCE SYSTEM — PROCEDURE & DOCUMENTATION
+================================================================================
+
+PROJECT NAME : Human Pose Guidance System
+LANGUAGE     : Python 3.10
+PLATFORM     : Windows (webcam-based, real-time)
+CREATED BY   : Amazon Q (AI Assistant by AWS)
+
+--------------------------------------------------------------------------------
+SECTION 1: WHAT THIS PROJECT DOES
+--------------------------------------------------------------------------------
+
+This system opens your webcam and:
+  1. Detects your body skeleton in real-time using MediaPipe Pose
+  2. Compares your current pose against a predefined target pose template
+  3. Gives you live feedback: "Bend your right elbow more", "Level your shoulders"
+  4. Analyzes camera framing: "Move camera up", "Step back — feet may be cut off"
+  5. Shows a match score (0–100%) as a progress bar
+  6. Auto-captures a photo when your pose matches >= 85%
+
+--------------------------------------------------------------------------------
+SECTION 2: STEP-BY-STEP HOW THE PROJECT WAS CREATED
+--------------------------------------------------------------------------------
+
+STEP 1 — RESEARCH & TECHNOLOGY SELECTION
+-----------------------------------------
+Problem: Build a real-time pose guidance system like Meitu/SNOW/CapCut camera.
+
+Technologies evaluated:
+  - OpenPose       : Accurate but heavy, not mobile-friendly
+  - MoveNet        : Fast but TensorFlow-only
+  - MediaPipe Pose : Best choice — lightweight, real-time, cross-platform,
+                     gives 33 body landmarks with x,y,z + visibility scores
+
+Decision: MediaPipe Pose + OpenCV for camera feed + NumPy for math.
+
+STEP 2 — INSTALL DEPENDENCIES
+-------------------------------
+Command run:
+  pip install opencv-python mediapipe numpy
+
+  - opencv-python  : Reads webcam frames, draws overlays, saves images
+  - mediapipe      : Google's ML framework — runs BlazePose model on-device
+  - numpy          : Vector math for joint angle calculations
+
+STEP 3 — DEFINE POSE TEMPLATES (pose_templates.py)
+----------------------------------------------------
+Instead of storing raw pixel coordinates (which change with distance/camera),
+we store JOINT ANGLE CONSTRAINTS — these are scale-invariant.
+
+Example: "right_elbow_angle": (70, 110) means the angle at the right elbow
+joint must be between 70° and 110° for this pose to be considered correct.
+
+Why angles instead of coordinates?
+  - A person 1m from camera vs 3m from camera has different pixel positions
+  - But the ANGLE at their elbow is the same regardless of distance
+  - This makes the system robust to zoom level and distance
+
+4 templates defined:
+  1. standing_hand_on_hip  — right elbow bent ~90°
+  2. arms_crossed          — both elbows bent ~60°
+  3. arms_raised           — both arms extended (T-pose)
+  4. relaxed_standing      — arms naturally at sides
+
+STEP 4 — BUILD POSE ANALYZER (pose_analyzer.py)
+-------------------------------------------------
+Two functions:
+
+  get_angle(a, b, c):
+    - Takes 3 joint positions (e.g., shoulder, elbow, wrist)
+    - Computes the angle at the middle joint (elbow) using dot product formula
+    - Formula: angle = arccos( (BA · BC) / (|BA| × |BC|) )
+
+  extract_angles(landmarks, w, h):
+    - Reads MediaPipe's 33 landmarks
+    - Converts normalized (0-1) coordinates to pixel coordinates
+    - Computes: right_elbow_angle, left_elbow_angle, shoulder_level
+
+  match_pose(current_angles, template):
+    - Compares each measured angle against the template's allowed range
+    - Returns: score (0.0 to 1.0) + list of human-readable feedback strings
+    - Score = (constraints passed) / (total constraints)
+
+STEP 5 — BUILD CAMERA GUIDANCE (camera_guidance.py)
+-----------------------------------------------------
+Uses body landmark positions to detect framing problems:
+
+  Checks performed:
+    - Horizontal centering: Is body_center_x between 35% and 65% of frame width?
+    - Head cut off: Is nose.y < 2% from top edge?
+    - Too much headroom: Is nose.y > 55% down the frame?
+    - Feet cut off: Estimated feet position > frame bottom?
+    - Too far away: Is body height < 30% of frame height?
+
+  All positions are in normalized coordinates (0.0 to 1.0), so this works
+  regardless of camera resolution.
+
+STEP 6 — BUILD OVERLAY UI (overlay_ui.py)
+------------------------------------------
+  draw_skeleton():
+    - Uses MediaPipe's built-in drawing utility
+    - Draws green dots on joints, cyan lines for bones
+
+  draw_feedback():
+    - Semi-transparent dark panel on left side (using cv2.addWeighted)
+    - Target pose name at top
+    - Color-coded progress bar: red < 50%, orange 50-80%, green >= 80%
+    - Pose tips list (up to 4 items)
+    - Camera tips list (up to 4 items)
+    - "PERFECT POSE - CAPTURING!" banner when score >= 85%
+    - Controls hint at bottom right
+
+STEP 7 — MEDIAPIPE API COMPATIBILITY FIX
+------------------------------------------
+  MediaPipe 0.10+ removed the old mp.solutions API entirely.
+  The new Tasks API requires:
+    - A downloaded .task model file (pose_landmarker.task)
+    - PoseLandmarker.create_from_options() instead of mp.solutions.pose.Pose()
+    - RunningMode.VIDEO for frame-by-frame processing with timestamps
+    - result.pose_landmarks[0] returns a plain list of NormalizedLandmark
+
+  Model downloaded automatically:
+    urllib.request.urlretrieve(
+      'https://storage.googleapis.com/mediapipe-models/pose_landmarker/
+       pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+      'pose_landmarker.task'
+    )
+
+  All mp.solutions references removed from every module.
+  Skeleton drawing reimplemented manually using POSE_CONNECTIONS index pairs
+  and cv2.line / cv2.circle — no longer depends on mp_drawing utilities.
+
+STEP 8 — BUILD MAIN APPLICATION (main.py)
+------------------------------------------
+  - Opens webcam with cv2.VideoCapture(0)
+  - Flips frame horizontally (mirror mode — feels natural)
+  - Converts BGR → RGB, wraps in mp.Image for Tasks API
+  - Passes monotonic timestamp (frame_idx / 30fps) to detect_for_video()
+  - Calls pose analyzer + camera guidance on first detected person
+  - Draws skeleton + all overlays
+  - Auto-saves photo to /captures/ folder when score >= 85%
+  - 60-frame cooldown between captures (prevents burst saving)
+  - Keyboard controls: Q = quit, N = cycle to next pose template
+
+STEP 9 — PROJECT STRUCTURE
+----------------------------
+humanpose/
+├── main.py              ← Entry point, camera loop, auto-capture
+├── pose_templates.py    ← Predefined pose definitions (angle constraints)
+├── pose_analyzer.py     ← Joint angle math + pose matching engine
+├── camera_guidance.py   ← Framing analysis + camera movement suggestions
+├── overlay_ui.py        ← All visual overlays drawn on frame
+├── pose_landmarker.task ← MediaPipe model file (downloaded automatically)
+├── requirements.txt     ← Python dependencies
+├── procedure.txt        ← This file
+└── captures/            ← Auto-created folder for saved photos
+
+--------------------------------------------------------------------------------
+SECTION 3: HOW TO RUN
+--------------------------------------------------------------------------------
+
+1. Open terminal in the project folder:
+   cd C:\Users\PARTHU\OneDrive\Desktop\humanpose
+
+2. Install dependencies (first time only):
+   pip install -r requirements.txt
+
+3. Run the application:
+   python main.py
+
+4. Controls:
+   - Q key  → Quit
+   - N key  → Switch to next pose template
+
+5. Photos are auto-saved to the "captures/" folder when pose match >= 85%
+
+--------------------------------------------------------------------------------
+SECTION 4: REAL-WORLD INTEGRATION EXAMPLES
+--------------------------------------------------------------------------------
+
+1. SOCIAL MEDIA / PHOTO APPS (like Meitu, SNOW, CapCut)
+---------------------------------------------------------
+Integration: Embed as a camera mode called "Pose Guide" or "AI Shot"
+How it works:
+  - User selects a pose style (casual, model, couple, travel)
+  - App overlays ghost skeleton showing target pose
+  - Real-time arrows guide user to match the pose
+  - Phone auto-captures when pose is matched
+Real example: SNOW app's "AI Pose" feature works exactly this way
+Tech path: Port Python logic to Swift (iOS) or Kotlin (Android) using
+           MediaPipe's mobile SDKs
+
+2. FITNESS & GYM APPS (like Nike Training, Peloton)
+-----------------------------------------------------
+Integration: Form correction during workouts
+How it works:
+  - Replace pose templates with exercise forms (squat, deadlift, plank)
+  - Instead of "photo capture", trigger rep counter when form is correct
+  - Alert user when joint angles go outside safe range (injury prevention)
+  - "Your knee angle is 45° — should be 90° for safe squat"
+Real example: Kemtai, Kaia Health use this exact approach
+AWS integration: Run MediaPipe on AWS Lambda for cloud-based form analysis,
+                store workout history in DynamoDB
+
+3. E-COMMERCE / VIRTUAL TRY-ON (like Amazon, ASOS)
+----------------------------------------------------
+Integration: "Try this outfit" feature
+How it works:
+  - Detect body pose and proportions from webcam
+  - Overlay clothing/accessories on detected body landmarks
+  - Guide user to stand in standard pose for accurate size recommendation
+  - "Stand straight with arms slightly out for best fit measurement"
+Real example: Amazon's virtual try-on for shoes uses body/foot detection
+AWS integration: Use Amazon Rekognition for body detection,
+                store user measurements in S3
+
+4. HEALTHCARE / PHYSIOTHERAPY (like Hinge Health)
+--------------------------------------------------
+Integration: Remote physiotherapy exercise guidance
+How it works:
+  - Therapist defines exercise templates (shoulder rotation range, etc.)
+  - Patient does exercises at home via webcam
+  - System measures actual joint angles vs prescribed range
+  - Reports compliance data to therapist dashboard
+Real example: Hinge Health, Kaia Health use computer vision for this
+AWS integration: Stream video to Amazon Kinesis Video Streams,
+                analyze with custom ML model on SageMaker,
+                store patient data in HIPAA-compliant S3 + DynamoDB
+
+5. RETAIL / SMART FITTING ROOMS
+---------------------------------
+Integration: In-store smart mirror
+How it works:
+  - Large display with embedded camera acts as mirror
+  - Detects customer body proportions
+  - Suggests clothing sizes automatically
+  - Guides customer to standard measurement pose
+Real example: Oak Labs, MemoMi smart mirrors use this
+Hardware: Raspberry Pi 4 or NVIDIA Jetson Nano running this Python code
+
+6. GAMING / AR EXPERIENCES
+----------------------------
+Integration: Body-controlled game input (no controller needed)
+How it works:
+  - Map pose keypoints to game character movements
+  - "Raise both arms" = jump, "lean left" = move left
+  - Fitness games: complete the pose to score points
+Real example: Just Dance uses similar body tracking
+AWS integration: Use AWS GameLift for multiplayer,
+                stream pose data via AWS AppSync (WebSocket)
+
+7. CORPORATE TRAINING / PRESENTATION COACHING
+----------------------------------------------
+Integration: Public speaking / presentation posture coach
+How it works:
+  - Analyze presenter's posture during practice sessions
+  - Flag slouching, crossed arms (closed body language), fidgeting
+  - Give post-session report: "You slouched 23% of the time"
+Real example: Orai app does voice coaching; this adds body language coaching
+AWS integration: Record sessions to S3, process with SageMaker,
+                generate PDF reports via Lambda
+
+8. SECURITY / ACCESS CONTROL
+------------------------------
+Integration: Behavioral biometrics (gait/posture recognition)
+How it works:
+  - Identify individuals by their unique walking pose pattern
+  - Detect suspicious postures (crouching, hiding objects)
+  - Contactless access control via pose verification
+Real example: Used in airports and stadiums for crowd analysis
+AWS integration: Amazon Rekognition Video for real-time analysis,
+                alerts via Amazon SNS
+
+--------------------------------------------------------------------------------
+SECTION 5: EXTENDING THIS PROJECT
+--------------------------------------------------------------------------------
+
+Add more pose templates:
+  → Edit pose_templates.py, add new entry with joint angle constraints
+
+Add 3D pose analysis:
+  → MediaPipe provides z-coordinates (depth) — use landmarks[idx].z
+  → Enables detecting if person is facing sideways vs forward
+
+Add voice feedback:
+  → pip install pyttsx3
+  → Call pyttsx3.speak(feedback_text) instead of just displaying text
+
+Deploy as web app:
+  → Use Flask + WebSocket to stream processed frames to browser
+  → Host on AWS EC2 or AWS Elastic Beanstalk
+
+Mobile deployment:
+  → MediaPipe has official Android (Java/Kotlin) and iOS (Swift) SDKs
+  → Same logic, same landmark indices — just different language syntax
+
+Cloud-scale deployment:
+  → Package model in Docker container
+  → Deploy on AWS ECS (Elastic Container Service)
+  → Use Amazon CloudFront for low-latency video streaming
+
+--------------------------------------------------------------------------------
+SECTION 6: KEY TECHNICAL CONCEPTS USED
+--------------------------------------------------------------------------------
+
+1. Joint Angle Calculation (Dot Product Method)
+   angle = arccos( (v1 · v2) / (|v1| × |v2|) )
+   where v1, v2 are vectors from the middle joint to adjacent joints
+
+2. Normalized Coordinates
+   MediaPipe returns x,y in range [0,1] relative to frame size
+   This makes the system resolution-independent
+
+3. Scale-Invariant Pose Matching
+   Using angles instead of pixel positions means the system works
+   regardless of how far the person stands from the camera
+
+4. Temporal Smoothing (built into MediaPipe)
+   MediaPipe tracks landmarks across frames — reduces jitter
+   min_tracking_confidence=0.6 balances accuracy vs speed
+
+5. Alpha Blending for UI
+   cv2.addWeighted(overlay, 0.45, frame, 0.55, 0, frame)
+   Creates semi-transparent panel without fully blocking the video
+
+================================================================================
+END OF PROCEDURE DOCUMENT
+================================================================================
