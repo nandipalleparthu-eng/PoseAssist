@@ -4,32 +4,62 @@ A real-time human pose guidance system built with Python, MediaPipe, and OpenCV.
 Guides users to match target poses via live webcam feedback — like the AI camera mode in Meitu/SNOW/CapCut.
 
 ---
+# PoseAssist 🧍‍♂️📸
 
-## Features
+> Real-time AI pose guidance system — like the smart camera mode in Meitu, SNOW, and CapCut, built with Python.
 
-- 🦴 Real-time skeleton detection using MediaPipe Pose (Tasks API)
-- 🎯 Pose matching against predefined templates with a live match score (0–100%)
-- 📷 Camera framing guidance — "Move camera up", "Step back", "Center the subject"
-- 💡 Joint-level feedback — "Bend your right elbow more"
-- 📸 Auto-captures photo when pose match reaches 85%
-- 🔄 Cycle through 4 pose templates with `N` key
+![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-green?logo=google)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.8-red?logo=opencv)
+![License](https://img.shields.io/badge/License-Apache2.0-yellow)
+
+---
+
+## What It Does
+
+PoseAssist opens your webcam and guides you to match a target pose in real time.
+
+- Detects your full body skeleton using **MediaPipe Pose (Tasks API)**
+- Compares your pose against a predefined template using **joint angle math**
+- Shows a live **match score (0–100%)** as a progress bar
+- Gives **joint-level tips** — *"Bend your right elbow more"*
+- Gives **camera framing tips** — *"Move camera up", "Step back"*
+- **Auto-captures** a photo the moment your pose hits 85% match
+
+---
+
+## Demo
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Target: Standing, right hand on hip                 │
+│ Match: ████████████░░░░  72%                        │
+│                                                     │
+│ POSE TIPS:                                          │
+│   Bend your right elbow more (currently 142°)       │
+│                                                     │
+│ CAMERA TIPS:                                        │
+│   Move camera UP — too much empty space above       │
+│                                          Q=quit N=next│
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Pose Templates
 
-| Template | Description |
-|---|---|
-| `standing_hand_on_hip` | Standing straight, right hand on hip |
-| `arms_crossed` | Standing with arms crossed |
-| `arms_raised` | Both arms raised to sides (T-pose) |
-| `relaxed_standing` | Natural relaxed standing pose |
+| # | Template | Description |
+|---|---|---|
+| 1 | `standing_hand_on_hip` | Standing straight, right hand on hip |
+| 2 | `arms_crossed` | Standing with arms crossed over chest |
+| 3 | `arms_raised` | Both arms raised to sides (T-pose) |
+| 4 | `relaxed_standing` | Natural relaxed standing, arms at sides |
 
 ---
 
 ## Setup
 
-### 1. Clone the repo
+### 1. Clone
 ```bash
 git clone https://github.com/nandipalleparthu-eng/PoseAssist.git
 cd PoseAssist
@@ -63,6 +93,27 @@ Auto-captured photos are saved to the `captures/` folder.
 
 ---
 
+## How Pose Matching Works
+
+Poses are matched using **joint angle constraints**, not pixel coordinates.  
+This makes the system **scale-invariant** — works at any distance from the camera.
+
+```
+angle = arccos( (BA · BC) / (|BA| × |BC|) )
+```
+
+Each template defines allowed angle ranges per joint.  
+**Score = fraction of constraints satisfied.**
+
+Example constraint for `standing_hand_on_hip`:
+```python
+"right_elbow_angle": (70, 110),   # elbow must be 70°–110°
+"left_elbow_angle":  (150, 180),  # left arm must be straight
+"shoulder_level":    True,        # shoulders must be level
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -74,41 +125,39 @@ PoseAssist/
 ├── overlay_ui.py         # Skeleton + score bar + tips overlay
 ├── download_model.py     # Downloads MediaPipe .task model file
 ├── requirements.txt      # Python dependencies
-└── procedure.txt         # Full build documentation + real-world integrations
+└── procedure.txt         # Full build documentation + integrations
 ```
-
----
-
-## Real-World Integration Examples
-
-- **Social media apps** — Auto-shot feature like SNOW/Meitu
-- **Fitness apps** — Exercise form correction (squat, plank, deadlift)
-- **E-commerce** — Virtual try-on pose guidance
-- **Healthcare** — Remote physiotherapy exercise tracking
-- **Smart fitting rooms** — Body proportion measurement
-- **Gaming** — Body-controlled input without a controller
-
-See `procedure.txt` for detailed integration guides with AWS services.
 
 ---
 
 ## Tech Stack
 
-- Python 3.10
-- [MediaPipe](https://mediapipe.dev/) — Pose landmark detection (Tasks API)
-- [OpenCV](https://opencv.org/) — Camera feed + drawing
-- NumPy — Joint angle calculations
+| Tool | Purpose |
+|---|---|
+| [MediaPipe](https://mediapipe.dev/) | Pose landmark detection (33 keypoints, Tasks API) |
+| [OpenCV](https://opencv.org/) | Webcam feed, drawing, image saving |
+| [NumPy](https://numpy.org/) | Vector math for joint angle calculations |
+| Python 3.10 | Core language |
 
 ---
 
-## How Pose Matching Works
+## Real-World Integration Examples
 
-Poses are matched using **joint angle constraints** (not pixel coordinates),  
-making the system scale-invariant — works regardless of distance from camera.
+| Industry | Use Case |
+|---|---|
+| 📱 Social Media Apps | Auto-shot like SNOW / Meitu / CapCut |
+| 🏋️ Fitness Apps | Exercise form correction (squat, plank, deadlift) |
+| 🛍️ E-Commerce | Virtual try-on pose guidance |
+| 🏥 Healthcare | Remote physiotherapy exercise tracking |
+| 🪞 Smart Fitting Rooms | Body proportion measurement |
+| 🎮 Gaming | Body-controlled input without a controller |
+| 🎤 Presentation Coaching | Posture and body language feedback |
 
-```
-angle = arccos( (BA · BC) / (|BA| × |BC|) )
-```
+> See `procedure.txt` for detailed AWS integration guides for each use case.
 
-Each template defines allowed angle ranges per joint.  
-Score = fraction of constraints satisfied.
+---
+
+## License
+
+Licensed under the [Apache 2.0 License](LICENSE).
+
