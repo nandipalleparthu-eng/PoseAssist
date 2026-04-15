@@ -1,11 +1,5 @@
 # PoseAssist 🧍‍♂️📸
 
-A real-time human pose guidance system built with Python, MediaPipe, and OpenCV.  
-Guides users to match target poses via live webcam feedback — like the AI camera mode in Meitu/SNOW/CapCut.
-
----
-# PoseAssist 🧍‍♂️📸
-
 > Real-time AI pose guidance system — like the smart camera mode in Meitu, SNOW, and CapCut, built with Python.
 
 ![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)
